@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Binary Offset Diff</title>
+<style>
+:root{--bg:#0b0b0c;--card:#1b1b1d;--card2:#222224;--line:#3a3a3d;--text:#f5f5f7;--muted:#a9a9ae;--accent:#8e8e96}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}
+.wrap{max-width:1100px;margin:0 auto;padding:28px 20px 60px}.top{display:flex;justify-content:center;margin-bottom:28px}
+.nav{background:#303034;border-radius:28px;padding:5px;display:flex;gap:3px}.nav span{padding:10px 20px;color:#aaa;border-radius:22px;font-weight:700}.nav .on{background:#55555b;color:#fff}
+h1{text-align:center;font-size:25px;margin:15px 0 28px}.card{background:linear-gradient(145deg,#202022,#171719);border:1px solid #3b3b3f;border-radius:25px;padding:25px;margin-bottom:22px;box-shadow:0 10px 30px #0004}
+.title{font-size:27px;font-weight:800;margin-bottom:10px}.desc{color:#bbb;line-height:1.7;margin-bottom:22px}
+.pickrow{display:grid;grid-template-columns:1fr 1fr;gap:14px}.pick{background:#fff;color:#111;border:0;border-radius:19px;padding:17px;font-size:18px;font-weight:800;cursor:pointer}.pick:hover{filter:brightness(.92)}
+.file{background:#1d1d20;border:1px solid #3b3b40;border-radius:20px;padding:18px;margin:12px 0}.label{color:#aaa;font-weight:700;margin-bottom:7px}.fname{font-size:16px;word-break:break-all}.meta{color:#888;font-size:13px;margin-top:5px}
+.mode{display:flex;background:#343438;border-radius:13px;padding:3px;margin-top:14px}.mode button{flex:1;border:0;background:transparent;color:#ddd;padding:11px;border-radius:10px;font-weight:700;cursor:pointer}.mode button.on{background:#77777d;color:#fff}
+.actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:18px}.action{border:0;border-radius:14px;padding:13px 22px;background:#fff;color:#111;font-weight:800;cursor:pointer}.action.secondary{background:#343438;color:#fff}.action:disabled{opacity:.4;cursor:not-allowed}
+.status{margin-top:15px;color:#aaa;min-height:22px}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:18px 0}.stat{background:#252528;border:1px solid #39393d;border-radius:16px;padding:15px}.stat b{display:block;font-size:22px}.stat small{color:#999}
+.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}.search{flex:1;min-width:200px;background:#111;border:1px solid #444;color:#fff;border-radius:12px;padding:11px 13px}.select{background:#111;color:#fff;border:1px solid #444;border-radius:12px;padding:11px}
+.tablewrap{overflow:auto;border:1px solid #39393d;border-radius:16px}table{border-collapse:collapse;width:100%;min-width:760px}th,td{padding:10px 12px;border-bottom:1px solid #303034;text-align:left;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}th{background:#29292c;color:#bbb;position:sticky;top:0}td.diff{color:#fff;font-weight:800}.changed{background:#3a2929}.empty{padding:35px;text-align:center;color:#888}
+.note{color:#888;font-size:13px;line-height:1.6;margin-top:15px}
+@media(max-width:700px){.wrap{padding:18px 12px}.pickrow{grid-template-columns:1fr}.stats{grid-template-columns:1fr 1fr}.nav span{padding:8px 10px;font-size:13px}.title{font-size:23px}}
+
+/* Pro analysis additions */
+.analysis-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:16px 0}
+.analysis-card{background:#252528;border:1px solid #39393d;border-radius:16px;padding:14px}
+.analysis-card b{display:block;font-size:16px;margin-bottom:5px}.analysis-card small{color:#999}
+.options{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:14px}
+.option{background:#111;border:1px solid #444;border-radius:14px;padding:12px;color:#fff}
+.option label{display:flex;gap:8px;align-items:center;cursor:pointer}.option select{width:100%;margin-top:8px}
+.badge{display:inline-block;padding:3px 8px;border-radius:8px;background:#343438;color:#ddd;font-size:11px;margin-left:5px}
+.insn{white-space:pre-wrap;line-height:1.45}
+.match-good{color:#b8f5c0}.match-warn{color:#ffd58a}.match-bad{color:#ff9b9b}
+.detail{background:#111;border:1px solid #3b3b40;border-radius:14px;padding:14px;margin-top:12px;display:none}
+.detail pre{margin:8px 0;white-space:pre-wrap;overflow:auto;font-size:12px}
+@media(max-width:700px){.analysis-grid,.options{grid-template-columns:1fr}}
+
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><div class="nav"><span>الرئيسية</span><span>السجل</span><span>Downloader</span><span class="on">الأدوات</span><span>المعلومات</span></div></div>
+  <h1>Leak Offset Binary</h1>
+
+  <section class="card">
+    <div class="title">Leak Offset Binary</div>
+    <div class="desc">قارن ملف Binary الأصلي مع الملف المعدّل محليًا. تعرض الأداة الـOffsets والـBytes الأصلية والمعدلة، وتقدر تربطها بـdump.cs وتعرض Class/Method وتحلل تعليمات ARM64 الشائعة.</div>
+    <div class="pickrow">
+      <button class="pick" id="origBtn">اختيار الملف الأصلي</button>
+      <button class="pick" id="modBtn">اختيار الملف المعدّل</button>
+    </div>
+    <input id="orig" type="file" hidden>
+    <input id="mod" type="file" hidden>
+  </section>
+
+  <h2>الملفات المختارة</h2>
+  <div class="file"><div class="label">الملف الأصلي</div><div class="fname" id="origName">لم يتم اختيار ملف</div><div class="meta" id="origMeta"></div></div>
+  <div class="file"><div class="label">الملف المعدّل</div><div class="fname" id="modName">لم يتم اختيار ملف</div><div class="meta" id="modMeta"></div></div>
+  <div class="file"><div class="label">dump.cs (اختياري)</div><div class="fname" id="dumpName">لم يتم اختيار dump.cs</div><div class="meta" id="dumpMeta"></div></div>
+  <input id="dump" type="file" accept=".cs,.txt" hidden>
+  <button class="action secondary" id="dumpBtn" style="margin:12px 0">اختيار dump.cs</button>
+
+
+  <section class="card">
+    <div class="title" style="font-size:22px">وضع المقارنة</div>
+    <div class="desc">اختر طريقة عرض الاختلافات قبل إخراج النتائج.</div>
+    <div class="mode"><button id="allMode" class="on">الكل</button><button id="changedMode">Input / Changed</button></div>
+    <div class="actions">
+      <button class="action" id="compare" disabled>قراءة ومقارنة</button>
+      <button class="action secondary" id="export" disabled>تصدير النتائج TXT</button>
+      <button class="action secondary" id="csv" disabled>تصدير CSV</button>
+    </div>
+    <div class="status" id="status"></div>
+  </section>
+
+  <section class="card" id="dumpSection">
+    <div class="title" style="font-size:22px">ربط الـ Offsets مع dump.cs</div>
+    <div class="desc">بعد اختيار dump.cs، تبحث الأداة عن الـ offsets التي ظهرت في الـ Binary Diff وتعرض الاسم والسطر المحيط بالـ offset عندما يكون موجودًا في الملف.</div>
+    <div class="stats">
+      <div class="stat"><b id="dumpOffsets">0</b><small>Offsets من dump.cs</small></div>
+      <div class="stat"><b id="dumpMatches">0</b><small>Matches</small></div>
+    </div>
+    <div class="toolbar">
+      <input class="search" id="dumpSearch" placeholder="بحث باسم Method / Field / Offset...">
+    </div>
+    <div class="tablewrap">
+      <table><thead id="dumpThead"><tr><th>Offset</th><th>الاسم / السياق</th><th>السطر</th></tr></thead>
+      <tbody id="dumpTbody"><tr><td colspan="3" class="empty">اختر dump.cs ثم نفّذ المقارنة.</td></tr></tbody></table>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="title" style="font-size:22px">النتائج</div>
+    <div class="stats">
+      <div class="stat"><b id="blocks">0</b><small>كتل مختلفة</small></div>
+      <div class="stat"><b id="bytes">0</b><small>Bytes مختلفة</small></div>
+      <div class="stat"><b id="sizeA">0</b><small>حجم الأصلي</small></div>
+      <div class="stat"><b id="sizeB">0</b><small>حجم المعدّل</small></div>
+    </div>
+    <div class="toolbar">
+      <input class="search" id="search" placeholder="بحث في Offset أو bytes...">
+      <select class="select" id="view"><option value="blocks">عرض الكتل</option><option value="bytes">عرض كل Byte مختلف</option></select>
+    </div>
+    <div class="tablewrap">
+      <table><thead id="thead"></thead><tbody id="tbody"><tr><td class="empty">اختر الملفين ثم اضغط «قراءة ومقارنة»</td></tr></tbody></table>
+    </div>
+    <div class="note">تعمل هذه الصفحة بالكامل داخل المتصفح. لا يتم رفع الملفات إلى خادم. المقارنة تتم byte-by-byte. تحليل ARM64 يدعم مجموعة من التعليمات الشائعة (مثل RET/NOP/BR/BLR/LDR/STR/ADD/SUB/MOV) وليس Disassembler كاملًا. التحليل يستخدم فهرسًا سريعًا للـdump لتجنب تجميد الصفحة. ربط dump.cs يعتمد على تطابق قيمة الـ Offset/RVA/VA رقميًا مع الـ offset المختلف؛ إذا كان dump يستخدم عنوانًا مختلفًا (مثل VA مع ASLR) فلن يظهر كتطابق تلقائي.</div>
+  </section>
+
+<section class="card">
+  <div class="title" style="font-size:22px">التحليل المتقدم</div>
+  <div class="desc">خيارات إضافية لتحويل الـDiff إلى معلومات أسهل للقراءة. فك التعليمات هنا تحليلي فقط ولا يعدّل الملفات الأصلية.</div>
+  <div class="options">
+    <div class="option">
+      <label><input type="checkbox" id="showAsm" checked> ترجمة Bytes إلى ARM64</label>
+      <select class="select" id="asmEndian"><option value="little">ARM64 Little-Endian</option></select>
+    </div>
+    <div class="option">
+      <label><input type="checkbox" id="showContext" checked> إظهار سياق الكلاس والـMethod</label>
+      <select class="select" id="contextMode">
+        <option value="nearest">أقرب تصريح للكلاس/الميثود</option>
+        <option value="strict">فقط إذا تطابق الـOffset</option>
+      </select>
+    </div>
+    <div class="option">
+      <label><input type="checkbox" id="groupInsn" checked> تجميع التغييرات حسب التعليمة</label>
+    </div>
+    <div class="option">
+      <label><input type="checkbox" id="onlyKnown"> عرض التعليمات المعروفة فقط</label>
+    </div>
+  </div>
+  <div class="analysis-grid">
+    <div class="analysis-card"><b id="classCount">0</b><small>Classes مرتبطة</small></div>
+    <div class="analysis-card"><b id="methodCount">0</b><small>Methods مرتبطة</small></div>
+    <div class="analysis-card"><b id="insnCount">0</b><small>تعليمات ARM64 مختلفة</small></div>
+  </div>
+  <div class="toolbar">
+    <input class="search" id="analysisSearch" placeholder="بحث Class / Method / Instruction...">
+  </div>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Offset</th><th>Class</th><th>Method</th><th>Original</th><th>Modified</th><th>ARM64</th></tr></thead>
+      <tbody id="analysisTbody"><tr><td colspan="6" class="empty">نفّذ المقارنة لعرض التحليل.</td></tr></tbody>
+    </table>
+  </div>
+</section>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+let A=null,B=null,D=null,results=[],dumpEntries=[],dumpExact=new Map(),dumpSorted=[],mode='all',analysisRows=[],analysisReady=false;
+
+$('origBtn').onclick=()=>$('orig').click();
+$('modBtn').onclick=()=>$('mod').click();
+$('orig').onchange=e=>{A=e.target.files[0];showFile(A,'origName','origMeta');ready()};
+$('mod').onchange=e=>{B=e.target.files[0];showFile(B,'modName','modMeta');ready()};
+function showFile(f,n,m){$(n).textContent=f?f.name:'لم يتم اختيار ملف';$(m).textContent=f?`${fmt(f.size)} • ${f.type||'binary'}`:''}
+function fmt(n){return n.toLocaleString()+' bytes'}
+function ready(){$('compare').disabled=!(A&&B)}
+$('dumpBtn').onclick=()=>$('dump').click();
+$('dump').onchange=async e=>{
+  D=e.target.files[0];
+  $('dumpName').textContent=D?D.name:'لم يتم اختيار dump.cs';
+  $('dumpMeta').textContent=D?`${fmt(D.size)} • C# / text`:'';
+  dumpEntries=[];
+  $('dumpOffsets').textContent='0';
+  $('dumpMatches').textContent='0';
+  if(D){
+    $('status').textContent='تم اختيار dump.cs. سيتم ربطه تلقائيًا بعد المقارنة.';
+  }
+};
+$('allMode').onclick=()=>setMode('all');
+$('changedMode').onclick=()=>setMode('changed');
+function setMode(x){mode=x;$('allMode').classList.toggle('on',x==='all');$('changedMode').classList.toggle('on',x==='changed');render()}
+$('compare').onclick=async()=>{
+ if(!A||!B)return;
+ $('status').textContent='جاري قراءة الملفات ومقارنتها...';
+ const [aa,bb]=await Promise.all([A.arrayBuffer(),B.arrayBuffer()]);
+ const a=new Uint8Array(aa),b=new Uint8Array(bb), len=Math.max(a.length,b.length);
+ results=[];
+ let i=0;
+ while(i<len){
+   if(a[i]===b[i] && i<a.length && i<b.length){i++;continue}
+   const start=i; let bytes=[];
+   while(i<len && (a[i]!==b[i] || i>=a.length || i>=b.length)){
+     bytes.push({o:i<a.length?a[i]:null,n:i<b.length?b[i]:null});i++;
+   }
+   results.push({start,end:i-1,bytes});
+ }
+ $('blocks').textContent=results.length.toLocaleString();
+ $('bytes').textContent=results.reduce((s,r)=>s+r.bytes.length,0).toLocaleString();
+ if(D){
+   $('status').textContent='جاري تحليل dump.cs وربط الـ offsets...';
+   const dumpText=await D.text();
+   dumpEntries=parseDump(dumpText);
+   $('dumpOffsets').textContent=dumpEntries.length.toLocaleString();
+   updateDumpMatches();
+ }
+ $('sizeA').textContent=fmt(a.length);$('sizeB').textContent=fmt(b.length);
+ $('status').textContent=`اكتملت المقارنة: ${results.length.toLocaleString()} كتلة مختلفة.`;
+ $('export').disabled=$('csv').disabled=results.length===0;
+ render();
+};
+$('search').oninput=render;$('view').onchange=render;
+function hex(v){return v==null?'--':v.toString(16).padStart(2,'0').toUpperCase()}
+function match(r){let q=$('search').value.trim().toLowerCase();if(!q)return true;let text=(r.start.toString(16)+' '+r.start+' '+r.bytes.map(x=>hex(x.o)+' '+hex(x.n)).join(' ')).toLowerCase();return text.includes(q)}
+
+function parseDump(text){
+  // Parse common IL2CPP dump.cs forms and retain class/method context.
+  const lines=text.split(/\r?\n/), entries=[], seen=new Set();
+  let currentClass='', currentMethod='';
+  const offsetRe=/(?:Offset|RVA|VA)\s*:\s*0x([0-9a-fA-F]+)/g;
+  const standalone=/\b0x([0-9a-fA-F]{4,16})\b/g;
+  const classRe=/\bclass\s+([A-Za-z_][\w.]*)|^\s*\/\/\s*Namespace:\s*(.*?)\s*$/;
+  const methodRe=/^\s*(?:public|private|protected|internal|static|virtual|abstract|extern|unsafe|readonly|sealed|new|\s)+.*?\b([A-Za-z_]\w*)\s*\([^;]*\)/;
+  for(let i=0;i<lines.length;i++){
+    const line=lines[i], trim=line.trim();
+    let cm=trim.match(classRe);
+    if(cm){
+      if(cm[1]) currentClass=cm[1];
+    }
+    let mm=trim.match(methodRe);
+    if(mm) currentMethod=mm[1];
+
+    let found=[],m;
+    offsetRe.lastIndex=0;
+    while((m=offsetRe.exec(line))) found.push(parseInt(m[1],16));
+    if(!found.length){
+      standalone.lastIndex=0;
+      while((m=standalone.exec(line))) found.push(parseInt(m[1],16));
+    }
+    for(const off of found){
+      const key=off.toString(16);
+      if(seen.has(key)) continue;
+      seen.add(key);
+      let context=trim;
+      if(/^\/\//.test(context) && i+1<lines.length && lines[i+1].trim()) context=lines[i+1].trim();
+      entries.push({off,hex:key.toUpperCase(),context,line:i+1,className:currentClass,method:currentMethod});
+    }
+  }
+  return entries;
+}
+function buildDumpIndex(){
+  dumpExact=new Map();
+  dumpSorted=dumpEntries.slice().sort((a,b)=>a.off-b.off);
+  for(const e of dumpEntries) if(!dumpExact.has(e.off)) dumpExact.set(e.off,e);
+}
+function nearestDump(off){
+  if(!dumpSorted.length) return null;
+  let lo=0,hi=dumpSorted.length-1;
+  while(lo<=hi){
+    const mid=(lo+hi)>>1, v=dumpSorted[mid].off;
+    if(v===off) return dumpSorted[mid];
+    if(v<off) lo=mid+1; else hi=mid-1;
+  }
+  const a=dumpSorted[Math.max(0,hi)], b=dumpSorted[Math.min(dumpSorted.length-1,lo)];
+  if(!a) return b;
+  if(!b) return a;
+  return Math.abs(a.off-off)<=Math.abs(b.off-off)?a:b;
+}
+
+function updateDumpMatches(){
+  if(!D || !results.length){$('dumpMatches').textContent='0';return}
+  const diffOffsets=new Set();
+  results.forEach(r=>r.bytes.forEach((x,j)=>diffOffsets.add(r.start+j)));
+  const matches=dumpEntries.filter(e=>diffOffsets.has(e.off));
+  $('dumpMatches').textContent=matches.length.toLocaleString();
+  const q=$('dumpSearch').value.trim().toLowerCase();
+  const filtered=matches.filter(e=>(e.hex+' '+e.context+' '+e.line+' '+e.className+' '+e.method).toLowerCase().includes(q));
+  $('dumpTbody').innerHTML=filtered.slice(0,2000).map(e=>
+    `<tr class="changed"><td>0x${e.hex}</td><td><b>${esc(e.className||'—')}</b><br>${esc(e.method||'—')}</td><td>${esc(e.context)}<br><small>${e.line}</small></td></tr>`
+  ).join('') || '<tr><td colspan="3" class="empty">لا يوجد تطابق.</td></tr>';
+}
+function esc(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+$('dumpSearch').oninput=updateDumpMatches;
+
+function render(){
+ let list=results.filter(match);let view=$('view').value;
+ if(mode==='changed') list=list.filter(r=>r.bytes.some(x=>x.o!==x.n));
+ if(view==='bytes'){
+  $('thead').innerHTML='<tr><th>Offset</th><th>Original</th><th>Modified</th><th>Decimal</th></tr>';
+  let rows=[];
+  list.forEach(r=>r.bytes.forEach((x,j)=>rows.push(`<tr class="changed"><td>0x${(r.start+j).toString(16).toUpperCase().padStart(8,'0')}</td><td>${hex(x.o)}</td><td>${hex(x.n)}</td><td>${r.start+j}</td></tr>`)));
+  $('tbody').innerHTML=rows.slice(0,50000).join('')||'<tr><td colspan="4" class="empty">لا توجد نتائج</td></tr>';
+ }else{
+  $('thead').innerHTML='<tr><th>Offset البداية</th><th>Offset النهاية</th><th>عدد Bytes</th><th>Original</th><th>Modified</th></tr>';
+  let rows=list.map(r=>{
+    let lim=r.bytes.slice(0,48);
+    return `<tr class="changed"><td>0x${r.start.toString(16).toUpperCase().padStart(8,'0')}</td><td>0x${r.end.toString(16).toUpperCase().padStart(8,'0')}</td><td>${r.bytes.length}</td><td>${lim.map(x=>hex(x.o)).join(' ')}</td><td>${lim.map(x=>hex(x.n)).join(' ')}</td></tr>`;
+  });
+  $('tbody').innerHTML=rows.slice(0,5000).join('')||'<tr><td colspan="5" class="empty">لا توجد نتائج</td></tr>';
+ }
+}
+
+function arm64Word(bytes){
+  if(bytes.length<4) return null;
+  return (bytes[0] | (bytes[1]<<8) | (bytes[2]<<16) | (bytes[3]<<24)) >>> 0;
+}
+function arm64Decode(bytes){
+  const w=arm64Word(bytes); if(w===null) return {text:'غير مكتمل',known:false};
+  if(w===0xD65F03C0) return {text:'RET',known:true};
+  if(w===0xD503201F) return {text:'NOP',known:true};
+  if(w===0xD5033FDF) return {text:'DSB SY',known:true};
+  if(w===0xD5033F9F) return {text:'DSB ISH',known:true};
+  if(w===0xD5033F5F) return {text:'DMB SY',known:true};
+  if(w===0xD5033F1F) return {text:'DMB ISH',known:true};
+  if(w===0xD65F0000) return {text:'RET (variant)',known:true};
+  if((w & 0xFFFFFC1F)===0xD61F0000) return {text:`BR X${(w>>>5)&31}`,known:true};
+  if((w & 0xFFFFFC1F)===0xD63F0000) return {text:`BLR X${(w>>>5)&31}`,known:true};
+  if((w & 0x7C000000)===0x14000000){
+    let imm=w&0x03FFFFFF; if(imm&0x02000000) imm|=0xFC000000;
+    return {text:`B ${((imm<<2)|0) >= 0 ? '+' : ''}${(imm<<2)|0}`,known:true};
+  }
+  if((w & 0x7C000000)===0x94000000){
+    let imm=w&0x03FFFFFF; if(imm&0x02000000) imm|=0xFC000000;
+    return {text:`BL ${((imm<<2)|0) >= 0 ? '+' : ''}${(imm<<2)|0}`,known:true};
+  }
+  if((w & 0xFFC00000)===0x91000000){
+    const rd=w&31,rn=(w>>>5)&31,imm=((w>>>10)&0xFFF);
+    return {text:`ADD X${rd}, X${rn}, #0x${imm.toString(16)}`,known:true};
+  }
+  if((w & 0xFFC00000)===0xD1000000){
+    const rd=w&31,rn=(w>>>5)&31,imm=((w>>>10)&0xFFF);
+    return {text:`SUB X${rd}, X${rn}, #0x${imm.toString(16)}`,known:true};
+  }
+  if((w & 0xFFC00000)===0xF9400000){
+    const rt=w&31,rn=(w>>>5)&31,imm=((w>>>10)&0xFFF)*8;
+    return {text:`LDR X${rt}, [X${rn}, #0x${imm.toString(16)}]`,known:true};
+  }
+  if((w & 0xFFC00000)===0xF9000000){
+    const rt=w&31,rn=(w>>>5)&31,imm=((w>>>10)&0xFFF)*8;
+    return {text:`STR X${rt}, [X${rn}, #0x${imm.toString(16)}]`,known:true};
+  }
+  if((w & 0xFFE0FC00)===0xAA0003E0){
+    const rd=w&31,rn=(w>>>5)&31;
+    return {text:`MOV X${rd}, X${rn}`,known:true};
+  }
+  return {text:'UNKNOWN / data',known:false};
+}
+function bytesAt(r, offset, side){
+  const idx=offset-r.start, x=r.bytes[idx];
+  if(!x) return [];
+  const arr=[];
+  for(let k=0;k<4;k++){
+    const z=r.bytes[idx+k];
+    if(!z) break;
+    arr.push(side==='o'?z.o:z.n);
+  }
+  return arr;
+}
+function findDumpForOffset(off){
+  if(!dumpEntries.length) return null;
+  const exact=dumpExact.get(off);
+  if(exact) return exact;
+  if($('contextMode').value==='strict') return null;
+  const best=nearestDump(off);
+  return best && Math.abs(best.off-off)<=0x200 ? best : null;
+}
+function buildAnalysis(){
+  analysisRows=[];
+  if(!results.length) return;
+  const seen=new Set();
+  const MAX=50000;
+  outer:
+  for(const r of results){
+    // Analyze at most one instruction per 4-byte boundary. This avoids
+    // decoding the same ARM64 instruction at offsets +1,+2,+3.
+    for(let j=0;j<r.bytes.length;j++){
+      const off=r.start+j;
+      if($('groupInsn').checked && ((off-r.start)&3)!==0) continue;
+      const ob=bytesAt(r,off,'o'), nb=bytesAt(r,off,'n');
+      const od=arm64Decode(ob), nd=arm64Decode(nb);
+      if($('onlyKnown').checked && !od.known && !nd.known) continue;
+      const d=findDumpForOffset(off);
+      const key=off+'|'+ob.join(',')+'|'+nb.join(',');
+      if(seen.has(key)) continue;
+      seen.add(key);
+      analysisRows.push({off,orig:ob,mod:nb,od,nd,d});
+      if(analysisRows.length>=MAX) break outer;
+    }
+  }
+  const classes=new Set(analysisRows.map(x=>x.d?.className).filter(Boolean));
+  const methods=new Set(analysisRows.map(x=>x.d?.method).filter(Boolean));
+  $('classCount').textContent=classes.size.toLocaleString();
+  $('methodCount').textContent=methods.size.toLocaleString();
+  $('insnCount').textContent=analysisRows.length.toLocaleString();
+  analysisReady=true;
+  renderAnalysis();
+}
+function renderAnalysis(){
+  const q=$('analysisSearch').value.trim().toLowerCase();
+  const rows=analysisRows.filter(x=>(`0x${x.off.toString(16)} ${x.d?.className||''} ${x.d?.method||''} ${x.od.text} ${x.nd.text}`).toLowerCase().includes(q));
+  $('analysisTbody').innerHTML=rows.slice(0,3000).map(x=>{
+    const cls=x.d?.className||'—', meth=x.d?.method||'—';
+    const o=x.orig.map(hex).join(' '), n=x.mod.map(hex).join(' ');
+    return `<tr class="changed"><td>0x${x.off.toString(16).toUpperCase().padStart(8,'0')}</td><td>${esc(cls)}</td><td>${esc(meth)}</td><td>${o||'--'}<br><small>${esc(x.od.text)}</small></td><td>${n||'--'}<br><small>${esc(x.nd.text)}</small></td><td class="insn">${esc(x.od.text)} → ${esc(x.nd.text)}</td></tr>`;
+  }).join('') || '<tr><td colspan="6" class="empty">لا توجد نتائج تحليلية.</td></tr>';
+}
+$('analysisSearch').oninput=renderAnalysis;
+['showAsm','showContext','groupInsn','onlyKnown','contextMode'].forEach(id=>{
+  $(id).onchange=()=>{
+    if(!results.length) return;
+    // Defer the rebuild so the click/tap is painted immediately.
+    requestAnimationFrame(()=>buildAnalysis());
+  };
+});
+
+function resultText(){
+ let out=['Leak Offset Binary','===================',`Original: ${A?.name||''}`,`Modified: ${B?.name||''}`,`Blocks: ${results.length}`,''];
+ results.forEach(r=>{out.push(`0x${r.start.toString(16).toUpperCase().padStart(8,'0')} - 0x${r.end.toString(16).toUpperCase().padStart(8,'0')} (${r.bytes.length} bytes)`);out.push('Original : '+r.bytes.map(x=>hex(x.o)).join(' '));out.push('Modified : '+r.bytes.map(x=>hex(x.n)).join(' '));out.push('');});
+ return out.join('\\n');
+}
+$('export').onclick=()=>download(new Blob([resultText()],{type:'text/plain'}),'offset-diff.txt');
+$('csv').onclick=()=>{
+ let s='offset,original,modified\\n';
+ results.forEach(r=>r.bytes.forEach((x,j)=>s+=`${r.start+j},${hex(x.o)},${hex(x.n)}\\n`));
+ download(new Blob([s],{type:'text/csv'}),'offset-diff.csv');
+};
+function download(blob,name){let u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),500)}
+</script>
+</body></html>
